@@ -154,6 +154,25 @@ type DirectoryEntry struct {
 func main() {
     router := httprouter.New()
     
+    // Global CORS middleware that wraps ALL requests
+    globalCORS := func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Set CORS headers for ALL requests
+            w.Header().Set("Access-Control-Allow-Origin", "http://45.87.172.65:8765")
+            w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            w.Header().Set("Access-Control-Allow-Credentials", "true")
+            
+            // Handle preflight requests
+            if r.Method == "OPTIONS" {
+                w.WriteHeader(http.StatusOK)
+                return
+            }
+            
+            next.ServeHTTP(w, r)
+        })
+    }
+    
     // Auth middleware for file endpoints
     requireAuth := func(h func(http.ResponseWriter, *http.Request, httprouter.Params, string)) httprouter.Handle {
         return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -170,31 +189,47 @@ func main() {
     router.POST("/api/user/register", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
         username := r.FormValue("username")
         password := r.FormValue("password")
+        fmt.Printf("Registration attempt: username=%s\n", username)
         if username == "" || password == "" {
             http.Error(w, "username and password required", http.StatusBadRequest)
             return
         }
         if err := addUser(username, password); err != nil {
+            fmt.Printf("Registration failed: %v\n", err)
             http.Error(w, err.Error(), http.StatusBadRequest)
             return
         }
+        fmt.Printf("Registration successful for user: %s\n", username)
         w.WriteHeader(http.StatusOK)
         w.Write([]byte(`{"success":true}`))
     })
 
-    // Login endpoint
+    // Login endpoint with debug logging
     router.POST("/api/user/login", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
         username := r.FormValue("username")
         password := r.FormValue("password")
+        fmt.Printf("Login attempt: username=%s, password_length=%d\n", username, len(password))
+        
         user, err := findUser(username)
-        if err != nil || user == nil {
+        if err != nil {
+            fmt.Printf("Error finding user %s: %v\n", username, err)
             http.Error(w, "invalid credentials", http.StatusUnauthorized)
             return
         }
+        if user == nil {
+            fmt.Printf("User %s not found\n", username)
+            http.Error(w, "invalid credentials", http.StatusUnauthorized)
+            return
+        }
+        
+        fmt.Printf("Found user: %s, checking password...\n", username)
         if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+            fmt.Printf("Password check failed for user %s: %v\n", username, err)
             http.Error(w, "invalid credentials", http.StatusUnauthorized)
             return
         }
+        
+        fmt.Printf("Login successful for user: %s\n", username)
         token := setSession(username)
         // Set cookie if requested
         if r.FormValue("cookie") == "1" {
@@ -220,6 +255,37 @@ func main() {
         }
         w.Header().Set("Content-Type", "application/json")
         w.Write([]byte(fmt.Sprintf(`{"username":"%s"}`, username)))
+    })
+
+    // Missing endpoints that the frontend expects
+    router.GET("/api/misc/cluster_speed", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(`{"success":true,"speed_gbps":10.0}`))
+    })
+
+    router.GET("/api/misc/recaptcha", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(`{"site_key":""}`))
+    })
+
+    router.GET("/api/user", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        username, ok := getSession(r)
+        if !ok {
+            w.Header().Set("Content-Type", "application/json")
+            w.Write([]byte(`{"username":"","authenticated":false}`))
+            return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(fmt.Sprintf(`{"username":"%s","authenticated":true}`, username)))
+    })
+
+    // Handle ALL OPTIONS requests
+    router.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "http://45.87.172.65:8765")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        w.Header().Set("Access-Control-Allow-Credentials", "true")
+        w.WriteHeader(http.StatusOK)
     })
 
     // File info endpoint
@@ -344,7 +410,8 @@ func main() {
     }))
 
     fmt.Println("Starting API server on :8776")
-    http.ListenAndServe(":8776", router)
+    // Wrap the router with global CORS middleware
+    http.ListenAndServe(":8776", globalCORS(router))
 }
 
 func getMimeType(path string) string {
