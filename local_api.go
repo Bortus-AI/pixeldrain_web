@@ -154,6 +154,74 @@ type DirectoryEntry struct {
 func main() {
     router := httprouter.New()
     
+    // Auth middleware for file endpoints
+    requireAuth := func(h func(http.ResponseWriter, *http.Request, httprouter.Params, string)) httprouter.Handle {
+        return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+            username, ok := getSession(r)
+            if !ok {
+                http.Error(w, "unauthorized", http.StatusUnauthorized)
+                return
+            }
+            h(w, r, ps, username)
+        }
+    }
+
+    // Registration endpoint
+    router.POST("/api/user/register", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        username := r.FormValue("username")
+        password := r.FormValue("password")
+        if username == "" || password == "" {
+            http.Error(w, "username and password required", http.StatusBadRequest)
+            return
+        }
+        if err := addUser(username, password); err != nil {
+            http.Error(w, err.Error(), http.StatusBadRequest)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte(`{"success":true}`))
+    })
+
+    // Login endpoint
+    router.POST("/api/user/login", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        username := r.FormValue("username")
+        password := r.FormValue("password")
+        user, err := findUser(username)
+        if err != nil || user == nil {
+            http.Error(w, "invalid credentials", http.StatusUnauthorized)
+            return
+        }
+        if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+            http.Error(w, "invalid credentials", http.StatusUnauthorized)
+            return
+        }
+        token := setSession(username)
+        // Set cookie if requested
+        if r.FormValue("cookie") == "1" {
+            http.SetCookie(w, &http.Cookie{
+                Name:     "session_token",
+                Value:    token,
+                Path:     "/",
+                HttpOnly: true,
+                Secure:   false, // set true if using HTTPS
+                SameSite: http.SameSiteLaxMode,
+            })
+        }
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(fmt.Sprintf(`{"success":true,"token":"%s"}`, token)))
+    })
+
+    // User info endpoint
+    router.GET("/api/user/me", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+        username, ok := getSession(r)
+        if !ok {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(fmt.Sprintf(`{"username":"%s"}`, username)))
+    })
+
     // File info endpoint
     router.GET("/api/file/:id/info", requireAuth(func(w http.ResponseWriter, r *http.Request, ps httprouter.Params, username string) {
         id := ps.ByName("id")
@@ -275,62 +343,6 @@ func main() {
         http.ServeFile(w, r, filePath)
     }))
 
-    // Registration endpoint
-    router.POST("/api/user/register", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-        username := r.FormValue("username")
-        password := r.FormValue("password")
-        if username == "" || password == "" {
-            http.Error(w, "username and password required", http.StatusBadRequest)
-            return
-        }
-        if err := addUser(username, password); err != nil {
-            http.Error(w, err.Error(), http.StatusBadRequest)
-            return
-        }
-        w.WriteHeader(http.StatusOK)
-        w.Write([]byte(`{"success":true}`))
-    })
-
-    // Login endpoint
-    router.POST("/api/user/login", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-        username := r.FormValue("username")
-        password := r.FormValue("password")
-        user, err := findUser(username)
-        if err != nil || user == nil {
-            http.Error(w, "invalid credentials", http.StatusUnauthorized)
-            return
-        }
-        if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-            http.Error(w, "invalid credentials", http.StatusUnauthorized)
-            return
-        }
-        token := setSession(username)
-        // Set cookie if requested
-        if r.FormValue("cookie") == "1" {
-            http.SetCookie(w, &http.Cookie{
-                Name:     "session_token",
-                Value:    token,
-                Path:     "/",
-                HttpOnly: true,
-                Secure:   false, // set true if using HTTPS
-                SameSite: http.SameSiteLaxMode,
-            })
-        }
-        w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(fmt.Sprintf(`{"success":true,"token":"%s"}`, token)))
-    })
-
-    // User info endpoint
-    router.GET("/api/user/me", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-        username, ok := getSession(r)
-        if !ok {
-            http.Error(w, "unauthorized", http.StatusUnauthorized)
-            return
-        }
-        w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(fmt.Sprintf(`{"username":"%s"}`, username)))
-    })
-
     fmt.Println("Starting API server on :8776")
     http.ListenAndServe(":8776", router)
 }
@@ -367,17 +379,5 @@ func getMimeType(path string) string {
         return "application/gzip"
     default:
         return "application/octet-stream"
-    }
-}
-
-// Auth middleware for file endpoints
-requireAuth := func(h func(http.ResponseWriter, *http.Request, httprouter.Params, string)) httprouter.Handle {
-    return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-        username, ok := getSession(r)
-        if !ok {
-            http.Error(w, "unauthorized", http.StatusUnauthorized)
-            return
-        }
-        h(w, r, ps, username)
     }
 } 
