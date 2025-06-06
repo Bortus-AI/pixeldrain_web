@@ -17,7 +17,7 @@ import (
 func main() {
 	var err error
 	var sock = flag.Bool("systemd-socket", false, "Enable/disable systemd socket activation")
-	var listen = flag.String("listen", ":8081", "The address which the API server will listen on")
+	var listen = flag.String("listen", ":8765", "The address which the API server will listen on")
 	var prefix = flag.String("prefix", "", "Prefix that comes before the API URL")
 	flag.Parse()
 
