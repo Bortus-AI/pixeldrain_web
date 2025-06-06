@@ -1,0 +1,6 @@
+[server]
+listen_addr = "0.0.0.0:8765"
+
+api_url_external = "http://45.87.172.65:8776/api"
+api_url_internal = "http://45.87.172.65:8776/api"
+proxy_api_requests = false
