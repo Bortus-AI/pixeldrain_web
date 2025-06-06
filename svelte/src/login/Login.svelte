@@ -104,11 +104,20 @@ const login = async (e?: SubmitEvent) => {
 
 		dispatch("login", {key: resp.auth_key})
 
+		console.log("Login successful, redirect logic:")
+		console.log("  login_redirect:", login_redirect)
+		console.log("  login_redirect type:", typeof login_redirect)
+		console.log("  window.location.pathname:", window.location.pathname)
+
 		if (typeof login_redirect === "string" && login_redirect.startsWith("/")) {
-			console.debug("redirecting user to requested path", login_redirect)
-			window.location.href = window.location.protocol+"//"+window.location.host+login_redirect
+			const redirectUrl = window.location.protocol+"//"+window.location.host+login_redirect
+			console.log("  Redirecting to requested path:", redirectUrl)
+			window.location.href = redirectUrl
 		} else if (window.location.pathname === "/login") {
+			console.log("  Redirecting to default /user")
 			window.location.href = "/user"
+		} else {
+			console.log("  No redirect performed")
 		}
 
 		return {success: true, message: "Successfully logged in"}
@@ -142,7 +151,8 @@ const login = async (e?: SubmitEvent) => {
 onMount(() => {
 	const params = new URLSearchParams(document.location.search)
 	if (params.get("redirect") !== null) {
-		login_redirect = params.get("redirect")
+		login_redirect = decodeURIComponent(params.get("redirect"))
+		console.log("Redirect parameter found:", params.get("redirect"), "decoded to:", login_redirect)
 	}
 
 	if (params.get("link_login_user_id") !== null && params.get("link_login_id") !== null) {

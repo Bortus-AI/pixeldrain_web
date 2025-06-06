@@ -231,17 +231,18 @@ func main() {
         
         fmt.Printf("Login successful for user: %s\n", username)
         token := setSession(username)
-        // Set cookie if requested
-        if r.FormValue("cookie") == "1" {
-            http.SetCookie(w, &http.Cookie{
-                Name:     "session_token",
-                Value:    token,
-                Path:     "/",
-                HttpOnly: true,
-                Secure:   false, // set true if using HTTPS
-                SameSite: http.SameSiteLaxMode,
-            })
-        }
+        
+        // Always set the pd_auth_key cookie that the frontend expects
+        http.SetCookie(w, &http.Cookie{
+            Name:     "pd_auth_key",
+            Value:    token,
+            Path:     "/",
+            HttpOnly: false, // Frontend needs to read this
+            Secure:   false, // set true if using HTTPS
+            SameSite: http.SameSiteLaxMode,
+            MaxAge:   31536000, // 1 year
+        })
+        
         w.Header().Set("Content-Type", "application/json")
         w.Write([]byte(fmt.Sprintf(`{"success":true,"auth_key":"%s"}`, token)))
     })
