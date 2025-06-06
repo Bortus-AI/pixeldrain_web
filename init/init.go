@@ -17,7 +17,7 @@ const DefaultConfig = `## Pixeldrain Web UI server configuration
 api_url_external      = "/api"
 
 # Address used to make internal API requests to the backend
-api_url_internal      = "https://pixeldrain.com/api"
+api_url_internal      = "http://45.87.172.65:8776/api"
 
 # When connecting to the API over a Unix domain socket you should enter the
 # socket path here. api_url_internal needs to be correct too, as the API path
