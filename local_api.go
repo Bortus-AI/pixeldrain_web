@@ -98,8 +98,8 @@ func main() {
         json.NewEncoder(w).Encode(response)
     })
 
-    fmt.Println("Starting API server on :8080")
-    http.ListenAndServe(":8080", router)
+    fmt.Println("Starting API server on :8776")
+    http.ListenAndServe(":8776", router)
 }
 
 func getMimeType(path string) string {
