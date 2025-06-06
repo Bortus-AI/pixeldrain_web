@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "fmt"
     "io"
+    "mime"
     "net/http"
     "os"
     "path/filepath"
@@ -22,6 +23,15 @@ type FileInfo struct {
     DateLastView  time.Time `json:"date_last_view"`
     Views         int       `json:"views"`
     ThumbnailHref string    `json:"thumbnail_href"`
+}
+
+type DirectoryEntry struct {
+    Name      string    `json:"name"`
+    Type      string    `json:"type"`
+    Path      string    `json:"path"`
+    Size      int64     `json:"size,omitempty"`
+    MimeType  string    `json:"mime_type,omitempty"`
+    DateModified time.Time `json:"date_modified,omitempty"`
 }
 
 func main() {
@@ -58,7 +68,32 @@ func main() {
         id := ps.ByName("id")
         filePath := filepath.Join("/mnt/minio", id)
         
+        // Set proper content type
+        w.Header().Set("Content-Type", getMimeType(filePath))
         http.ServeFile(w, r, filePath)
+    })
+
+    // File upload endpoint
+    router.PUT("/api/file/:id", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+        id := ps.ByName("id")
+        filePath := filepath.Join("/mnt/minio", id)
+        
+        // Create the file
+        out, err := os.Create(filePath)
+        if err != nil {
+            http.Error(w, "Could not create file", http.StatusInternalServerError)
+            return
+        }
+        defer out.Close()
+
+        // Copy the uploaded file
+        _, err = io.Copy(out, r.Body)
+        if err != nil {
+            http.Error(w, "Could not write file", http.StatusInternalServerError)
+            return
+        }
+
+        w.WriteHeader(http.StatusOK)
     })
 
     // Filesystem listing endpoint
@@ -73,12 +108,12 @@ func main() {
         }
 
         var response struct {
-            Success           bool     `json:"success"`
-            Name             string   `json:"name"`
-            Path             string   `json:"path"`
-            Type             string   `json:"type"`
-            ChildDirectories []string `json:"child_directories"`
-            ChildFiles       []string `json:"child_files"`
+            Success           bool            `json:"success"`
+            Name             string          `json:"name"`
+            Path             string          `json:"path"`
+            Type             string          `json:"type"`
+            ChildDirectories []DirectoryEntry `json:"child_directories"`
+            ChildFiles       []DirectoryEntry `json:"child_files"`
         }
 
         response.Success = true
@@ -87,10 +122,25 @@ func main() {
         response.Type = "directory"
 
         for _, entry := range entries {
+            info, err := entry.Info()
+            if err != nil {
+                continue
+            }
+
+            de := DirectoryEntry{
+                Name:          entry.Name(),
+                Path:          filepath.Join(path, entry.Name()),
+                DateModified:  info.ModTime(),
+            }
+
             if entry.IsDir() {
-                response.ChildDirectories = append(response.ChildDirectories, entry.Name())
+                de.Type = "directory"
+                response.ChildDirectories = append(response.ChildDirectories, de)
             } else {
-                response.ChildFiles = append(response.ChildFiles, entry.Name())
+                de.Type = "file"
+                de.Size = info.Size()
+                de.MimeType = getMimeType(filepath.Join(fullPath, entry.Name()))
+                response.ChildFiles = append(response.ChildFiles, de)
             }
         }
 
@@ -98,11 +148,28 @@ func main() {
         json.NewEncoder(w).Encode(response)
     })
 
+    // Thumbnail endpoint
+    router.GET("/api/file/:id/thumbnail", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+        id := ps.ByName("id")
+        filePath := filepath.Join("/mnt/minio", id)
+        
+        // For now, just serve the file as is
+        // TODO: Implement actual thumbnail generation
+        http.ServeFile(w, r, filePath)
+    })
+
     fmt.Println("Starting API server on :8776")
     http.ListenAndServe(":8776", router)
 }
 
 func getMimeType(path string) string {
+    // First try to get the MIME type from the file extension
+    mimeType := mime.TypeByExtension(filepath.Ext(path))
+    if mimeType != "" {
+        return mimeType
+    }
+
+    // Fallback to our custom MIME type detection
     ext := strings.ToLower(filepath.Ext(path))
     switch ext {
     case ".jpg", ".jpeg":
@@ -115,6 +182,16 @@ func getMimeType(path string) string {
         return "application/pdf"
     case ".txt":
         return "text/plain"
+    case ".mp4":
+        return "video/mp4"
+    case ".mp3":
+        return "audio/mpeg"
+    case ".zip":
+        return "application/zip"
+    case ".tar":
+        return "application/x-tar"
+    case ".gz":
+        return "application/gzip"
     default:
         return "application/octet-stream"
     }
