@@ -243,7 +243,7 @@ func main() {
             })
         }
         w.Header().Set("Content-Type", "application/json")
-        w.Write([]byte(fmt.Sprintf(`{"success":true,"token":"%s"}`, token)))
+        w.Write([]byte(fmt.Sprintf(`{"success":true,"auth_key":"%s"}`, token)))
     })
 
     // User info endpoint
