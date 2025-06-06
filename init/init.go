@@ -56,6 +56,13 @@ func Init(r *httprouter.Router, prefix string, setLogLevel bool) {
 		os.Exit(1)
 	}
 
+	// Debug: Log the loaded configuration values
+	log.Info("Loaded configuration:")
+	log.Info("  APIURLExternal: %s", conf.APIURLExternal)
+	log.Info("  APIURLInternal: %s", conf.APIURLInternal)
+	log.Info("  ProxyAPIRequests: %t", conf.ProxyAPIRequests)
+	log.Info("  DebugMode: %t", conf.DebugMode)
+
 	if !conf.DebugMode && setLogLevel {
 		log.SetLogLevel(log.LevelInfo)
 	}

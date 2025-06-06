@@ -1,6 +1,26 @@
-[server]
-listen_addr = "0.0.0.0:8765"
+## Pixeldrain Web UI server configuration
 
+# Address used in the browser for making requests directly to the API. Can be
+# relative to the current domain name
 api_url_external = "http://45.87.172.65:8776/api"
+
+# Address used to make internal API requests to the backend
 api_url_internal = "http://45.87.172.65:8776/api"
+
+# When connecting to the API over a Unix domain socket you should enter the
+# socket path here. api_url_internal needs to be correct too, as the API path
+# prefix will be derived from there
+api_socket_path = ""
+
+session_cookie_domain = ""
+resource_dir = "res"
+
+# Parse all the templates every time a request comes in
+debug_mode = true
+
+# Create proxy listeners to forward all requests made to /api to
+# api_url_internal
 proxy_api_requests = false
+
+# When this is true every request will return a maintainance HTML page
+maintenance_mode = false
